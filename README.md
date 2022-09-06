@@ -3,12 +3,14 @@ A set of scripts for generating inorganic nanomaterials and their topology files
 
 # Instructions on how to set up slab and nanoparticle generation
 
-**Make sure you have Anaconda3/Miniconda3 before you begin!**
+0. Clone the repository
+
+**Make sure you have Anaconda3/Miniconda3 before you proceed!**
 
 Miniconda is preferable as it does not contain any unnecessary packages. You can get it here:
 https://docs.conda.io/en/latest/miniconda.html
 
-Create a separate conda environment with all the necessary packages using the provided `yml` recipe:
+Create a separate conda environment with all the dependencies using the provided `yml` recipe:
 
 1. `conda env create -f npgen.yml`
 
@@ -45,3 +47,9 @@ Generate the topology:
 Resulting output files include a `gro` configuration file, `itp` topology file as well as a template for the `top` file. 
 
 Use in combination with the `FF-bones.itp` file to start MD simulations in `GROMACS`.
+
+Authors:
+- Erik G. Brandt - main developer of `bones`, `radish` and the structure generating scripts
+- Samuel Stenberg - main developer of `mizzle` package
+- Mikhail Ivanov - development support
+- Alexander Lyubartsev - group leader and development support
