@@ -1,0 +1,1127 @@
+{
+    "1": {
+        "directed": true, 
+        "graph": {
+            "name": "Ti-O6"
+        }, 
+        "links": [
+            {
+                "source": 0, 
+                "target": 1
+            }, 
+            {
+                "source": 0, 
+                "target": 2
+            }, 
+            {
+                "source": 0, 
+                "target": 3
+            }, 
+            {
+                "source": 0, 
+                "target": 4
+            }, 
+            {
+                "source": 0, 
+                "target": 5
+            }, 
+            {
+                "source": 0, 
+                "target": 6
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "NAC": 2.248, 
+                "NBO": 2.309393543874338, 
+                "element": "Ti", 
+                "epsilon": 13.79, 
+                "id": 0, 
+                "sigma": 0.19
+            }, 
+            {
+                "element": "O", 
+                "id": 1
+            }, 
+            {
+                "element": "O", 
+                "id": 2
+            }, 
+            {
+                "element": "O", 
+                "id": 3
+            }, 
+            {
+                "element": "O", 
+                "id": 4
+            }, 
+            {
+                "element": "O", 
+                "id": 5
+            }, 
+            {
+                "element": "O", 
+                "id": 6
+            }
+        ]
+    }, 
+    "2": {
+        "directed": true, 
+        "graph": {
+            "name": "Ti-O5"
+        }, 
+        "links": [
+            {
+                "source": 2, 
+                "target": 0
+            }, 
+            {
+                "source": 2, 
+                "target": 1
+            }, 
+            {
+                "source": 2, 
+                "target": 3
+            }, 
+            {
+                "source": 2, 
+                "target": 4
+            }, 
+            {
+                "source": 2, 
+                "target": 5
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "O", 
+                "id": 0
+            }, 
+            {
+                "element": "O", 
+                "id": 1
+            }, 
+            {
+                "NAC": 2.159, 
+                "NBO": 2.4988547758112087, 
+                "element": "Ti", 
+                "epsilon": 13.79, 
+                "id": 2, 
+                "sigma": 0.19
+            }, 
+            {
+                "element": "O", 
+                "id": 3
+            }, 
+            {
+                "element": "O", 
+                "id": 4
+            }, 
+            {
+                "element": "O", 
+                "id": 5
+            }
+        ]
+    }, 
+    "3": {
+        "directed": true, 
+        "graph": {
+            "name": "Ti-H1O5"
+        }, 
+        "links": [
+            {
+                "source": 6, 
+                "target": 0
+            }, 
+            {
+                "source": 6, 
+                "target": 1
+            }, 
+            {
+                "source": 6, 
+                "target": 2
+            }, 
+            {
+                "source": 6, 
+                "target": 3
+            }, 
+            {
+                "source": 6, 
+                "target": 4
+            }, 
+            {
+                "source": 6, 
+                "target": 5
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "O", 
+                "id": 0
+            }, 
+            {
+                "element": "O", 
+                "id": 1
+            }, 
+            {
+                "element": "O", 
+                "id": 2
+            }, 
+            {
+                "element": "H", 
+                "id": 3
+            }, 
+            {
+                "element": "O", 
+                "id": 4
+            }, 
+            {
+                "element": "O", 
+                "id": 5
+            }, 
+            {
+                "NAC": 2.09700175, 
+                "NBO": 2.4848225, 
+                "element": "Ti", 
+                "epsilon": 13.79, 
+                "id": 6, 
+                "sigma": 0.19
+            }
+        ]
+    }, 
+    "4": {
+        "directed": true, 
+        "graph": {
+            "name": "O-Ti3"
+        }, 
+        "links": [
+            {
+                "source": 1, 
+                "target": 0
+            }, 
+            {
+                "source": 1, 
+                "target": 2
+            }, 
+            {
+                "source": 1, 
+                "target": 3
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "Ti", 
+                "id": 0
+            }, 
+            {
+                "NAC": -1.124, 
+                "NBO": 1.7928361690020658, 
+                "element": "O", 
+                "epsilon": 0.409, 
+                "id": 1, 
+                "sigma": 0.351
+            }, 
+            {
+                "element": "Ti", 
+                "id": 2
+            }, 
+            {
+                "element": "Ti", 
+                "id": 3
+            }
+        ]
+    }, 
+    "5": {
+        "directed": true, 
+        "graph": {
+            "name": "O-Ti2"
+        }, 
+        "links": [
+            {
+                "source": 0, 
+                "target": 1
+            }, 
+            {
+                "source": 0, 
+                "target": 2
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "NAC": -1.035, 
+                "NBO": 1.6759043883219964, 
+                "element": "O", 
+                "epsilon": 0.401, 
+                "id": 0, 
+                "sigma": 0.342
+            }, 
+            {
+                "element": "Ti", 
+                "id": 1
+            }, 
+            {
+                "element": "Ti", 
+                "id": 2
+            }
+        ]
+    }, 
+    "6": {
+        "directed": true, 
+        "graph": {
+            "name": "O-H2"
+        }, 
+        "links": [
+            {
+                "source": 0, 
+                "target": 1
+            }, 
+            {
+                "source": 0, 
+                "target": 2
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "NAC": -0.834, 
+                "NBO": 1.9051465520316366, 
+                "element": "O", 
+                "epsilon": 0.636, 
+                "id": 0, 
+                "sigma": 0.314
+            }, 
+            {
+                "element": "H", 
+                "id": 1
+            }, 
+            {
+                "element": "H", 
+                "id": 2
+            }
+        ]
+    }, 
+    "7": {
+        "directed": true, 
+        "graph": {
+            "name": "H-O1"
+        }, 
+        "links": [
+            {
+                "source": 1, 
+                "target": 0
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "O", 
+                "id": 0
+            },
+            {
+                "NAC": 0.417, 
+                "NBO": 0.8997359985027615, 
+                "element": "H",
+                "epsilon": 0,
+                "id": 1, 
+                "sigma": 0
+            }
+        ]
+    }, 
+    "8": {
+        "directed": true, 
+        "graph": {
+            "name": "O-H2O1"
+        }, 
+        "links": [
+            {
+                "source": 1, 
+                "target": 0
+            }, 
+            {
+                "source": 1, 
+                "target": 2
+            }, 
+            {
+                "source": 1, 
+                "target": 3
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "O", 
+                "id": 0
+            }, 
+            {
+                "NAC": -0.5660126666666666, 
+                "NBO": 2.4676635, 
+                "element": "O", 
+                "epsilon": 0.371822433390441, 
+                "id": 1, 
+                "sigma": 0.31048729183794777
+            }, 
+            {
+                "element": "H", 
+                "id": 2
+            }, 
+            {
+                "element": "H", 
+                "id": 3
+            }
+        ]
+    }, 
+    "9": {
+        "directed": true, 
+        "graph": {
+            "name": "H-O1Ti1"
+        }, 
+        "links": [
+            {
+                "source": 2, 
+                "target": 0
+            }, 
+            {
+                "source": 2, 
+                "target": 1
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "O", 
+                "id": 0
+            }, 
+            {
+                "element": "Ti", 
+                "id": 1
+            }, 
+            {
+                "NAC": 0.2837658, 
+                "NBO": 0.9624314, 
+                "element": "H", 
+                "epsilon": 0.21155058771419039, 
+                "id": 2, 
+                "sigma": 0.2241278834688035
+            }
+        ]
+    }, 
+    "10": {
+        "directed": true, 
+        "graph": {
+            "name": "H-O2"
+        }, 
+        "links": [
+            {
+                "source": 2, 
+                "target": 0
+            }, 
+            {
+                "source": 2, 
+                "target": 1
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "O", 
+                "id": 0
+            }, 
+            {
+                "element": "O", 
+                "id": 1
+            }, 
+            {
+                "NAC": 0.42210820000000004, 
+                "NBO": 0.8861036222222222, 
+                "element": "H", 
+                "epsilon": 0.2236613544307802, 
+                "id": 2, 
+                "sigma": 0.19752050841345234
+            }
+        ]
+    }, 
+    "11": {
+        "directed": true, 
+        "graph": {
+            "name": "H-H1O1"
+        }, 
+        "links": [
+            {
+                "source": 1, 
+                "target": 0
+            }, 
+            {
+                "source": 1, 
+                "target": 2
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "O", 
+                "id": 0
+            }, 
+            {
+                "NAC": 0.2840556666666667, 
+                "NBO": 1.007584611111111, 
+                "element": "H", 
+                "epsilon": 0.21491998006197485, 
+                "id": 1, 
+                "sigma": 0.21632157495194568
+            }, 
+            {
+                "element": "H", 
+                "id": 2
+            }
+        ]
+    }, 
+    "12": {
+        "directed": true, 
+        "graph": {
+            "name": "O-H3"
+        }, 
+        "links": [
+            {
+                "source": 2, 
+                "target": 0
+            }, 
+            {
+                "source": 2, 
+                "target": 1
+            }, 
+            {
+                "source": 2, 
+                "target": 3
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "H", 
+                "id": 0
+            }, 
+            {
+                "element": "H", 
+                "id": 1
+            }, 
+            {
+                "NAC": -0.6742562307692308, 
+                "NBO": 2.2600185641025647, 
+                "element": "O", 
+                "epsilon": 0.3733510097654621, 
+                "id": 2, 
+                "sigma": 0.3121213861813171
+            }, 
+            {
+                "element": "H", 
+                "id": 3
+            }
+        ]
+    }, 
+    "13": {
+        "directed": true, 
+        "graph": {
+            "name": "H-H1O2"
+        }, 
+        "links": [
+            {
+                "source": 1, 
+                "target": 0
+            }, 
+            {
+                "source": 1, 
+                "target": 2
+            }, 
+            {
+                "source": 1, 
+                "target": 3
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "O", 
+                "id": 0
+            }, 
+            {
+                "NAC": 0.34324725, 
+                "NBO": 1.0246490000000001, 
+                "element": "H", 
+                "epsilon": 0.21924087071141957, 
+                "id": 1, 
+                "sigma": 0.20630833250852815
+            }, 
+            {
+                "element": "H", 
+                "id": 2
+            }, 
+            {
+                "element": "O", 
+                "id": 3
+            }
+        ]
+    }, 
+    "14": {
+        "directed": true, 
+        "graph": {
+            "name": "O-H1Ti1"
+        }, 
+        "links": [
+            {
+                "source": 1, 
+                "target": 0
+            }, 
+            {
+                "source": 1, 
+                "target": 2
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "H", 
+                "id": 0
+            }, 
+            {
+                "NAC": -0.913, 
+                "NBO": 1.7917006133720936, 
+                "element": "O", 
+                "epsilon": 0.389, 
+                "id": 1, 
+                "sigma": 0.329
+            }, 
+            {
+                "element": "Ti", 
+                "id": 2
+            }
+        ]
+    }, 
+    "15": {
+        "directed": true, 
+        "graph": {
+            "name": "O-H1Ti2"
+        }, 
+        "links": [
+            {
+                "source": 1, 
+                "target": 0
+            }, 
+            {
+                "source": 1, 
+                "target": 2
+            }, 
+            {
+                "source": 1, 
+                "target": 3
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "H", 
+                "id": 0
+            }, 
+            {
+                "NAC": -1.005, 
+                "NBO": 1.8799513807106598, 
+                "element": "O", 
+                "epsilon": 0.39868660388000365, 
+                "id": 1, 
+                "sigma": 0.339528542067318
+            }, 
+            {
+                "element": "Ti", 
+                "id": 2
+            }, 
+            {
+                "element": "Ti", 
+                "id": 3
+            }
+        ]
+    }, 
+    "16": {
+        "directed": true, 
+        "graph": {
+            "name": "O-H2Ti1"
+        }, 
+        "links": [
+            {
+                "source": 0, 
+                "target": 1
+            }, 
+            {
+                "source": 0, 
+                "target": 2
+            }, 
+            {
+                "source": 0, 
+                "target": 3
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "NAC": -0.834, 
+                "NBO": 1.9478827969576753, 
+                "element": "O", 
+                "epsilon": 0.636, 
+                "id": 0, 
+                "sigma": 0.314
+            }, 
+            {
+                "element": "H", 
+                "id": 1
+            }, 
+            {
+                "element": "H", 
+                "id": 2
+            }, 
+            {
+                "element": "Ti", 
+                "id": 3
+            }
+        ]
+    }, 
+    "17": {
+        "directed": true, 
+        "graph": {
+            "name": "Ti-O4"
+        }, 
+        "links": [
+            {
+                "source": 0, 
+                "target": 1
+            }, 
+            {
+                "source": 0, 
+                "target": 2
+            }, 
+            {
+                "source": 0, 
+                "target": 3
+            }, 
+            {
+                "source": 0, 
+                "target": 4
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "NAC": 2.068606, 
+                "NBO": 2.5439141, 
+                "element": "Ti", 
+                "epsilon": 2.6735981250468113, 
+                "id": 0, 
+                "sigma": 0.25968862559091366
+            }, 
+            {
+                "element": "O", 
+                "id": 1
+            }, 
+            {
+                "element": "O", 
+                "id": 2
+            }, 
+            {
+                "element": "O", 
+                "id": 3
+            }, 
+            {
+                "element": "O", 
+                "id": 4
+            }
+        ]
+    }, 
+    "18": {
+        "directed": true, 
+        "graph": {
+            "name": "Ti-H1O4"
+        }, 
+        "links": [
+            {
+                "source": 3, 
+                "target": 0
+            }, 
+            {
+                "source": 3, 
+                "target": 1
+            }, 
+            {
+                "source": 3, 
+                "target": 2
+            }, 
+            {
+                "source": 3, 
+                "target": 4
+            }, 
+            {
+                "source": 3, 
+                "target": 5
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "O", 
+                "id": 0
+            }, 
+            {
+                "element": "O", 
+                "id": 1
+            }, 
+            {
+                "element": "O", 
+                "id": 2
+            }, 
+            {
+                "NAC": 2.057317, 
+                "NBO": 2.3395040000000003, 
+                "element": "Ti", 
+                "epsilon": 2.6724352516383636, 
+                "id": 3, 
+                "sigma": 0.2594890526922301
+            }, 
+            {
+                "element": "H", 
+                "id": 4
+            }, 
+            {
+                "element": "O", 
+                "id": 5
+            }
+        ]
+    }, 
+    "19": {
+        "directed": true, 
+        "graph": {
+            "name": "O-Ti1"
+        }, 
+        "links": [
+            {
+                "source": 1, 
+                "target": 0
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "Ti", 
+                "id": 0
+            }, 
+            {
+                "NAC": -0.9281202307692309, 
+                "NBO": 1.5754795384615385, 
+                "element": "O", 
+                "epsilon": 0.3920372725192208, 
+                "id": 1, 
+                "sigma": 0.332285448157239
+            }
+        ]
+    }, 
+    "20": {
+        "directed": true, 
+        "graph": {
+            "name": "O-H2Ti2"
+        }, 
+        "links": [
+            {
+                "source": 3, 
+                "target": 0
+            }, 
+            {
+                "source": 3, 
+                "target": 1
+            }, 
+            {
+                "source": 3, 
+                "target": 2
+            }, 
+            {
+                "source": 3, 
+                "target": 4
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "Ti", 
+                "id": 0
+            }, 
+            {
+                "element": "H", 
+                "id": 1
+            }, 
+            {
+                "element": "Ti", 
+                "id": 2
+            }, 
+            {
+                "NAC": -0.8686870000000001, 
+                "NBO": 2.053511, 
+                "element": "O", 
+                "epsilon": 0.3890311286831025, 
+                "id": 3, 
+                "sigma": 0.32902118198551306
+            }, 
+            {
+                "element": "H", 
+                "id": 4
+            }
+        ]
+    }, 
+    "21": {
+        "directed": true, 
+        "graph": {
+            "name": "O-O1Ti2"
+        }, 
+        "links": [
+            {
+                "source": 1, 
+                "target": 0
+            }, 
+            {
+                "source": 1, 
+                "target": 2
+            }, 
+            {
+                "source": 1, 
+                "target": 3
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "Ti", 
+                "id": 0
+            }, 
+            {
+                "NAC": -0.835636, 
+                "NBO": 2.222917, 
+                "element": "O", 
+                "epsilon": 0.3923181646039141, 
+                "id": 1, 
+                "sigma": 0.33258951594897646
+            }, 
+            {
+                "element": "O", 
+                "id": 2
+            }, 
+            {
+                "element": "Ti", 
+                "id": 3
+            }
+        ]
+    }, 
+    "22": {
+        "directed": true, 
+        "graph": {
+            "name": "H-"
+        }, 
+        "links": [], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "NAC": 0.19072999999999998, 
+                "NBO": 0.624215, 
+                "element": "H", 
+                "epsilon": 0.20219097542766604, 
+                "id": 0, 
+                "sigma": 0.24653889383559557
+            }
+        ]
+    }, 
+    "23": {
+        "directed": true, 
+        "graph": {
+            "name": "O-H1O1"
+        }, 
+        "links": [
+            {
+                "source": 1, 
+                "target": 0
+            }, 
+            {
+                "source": 1, 
+                "target": 2
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "O", 
+                "id": 0
+            }, 
+            {
+                "NAC": -0.310735, 
+                "NBO": 2.046593, 
+                "element": "O", 
+                "epsilon": 0.3706007683728707, 
+                "id": 1, 
+                "sigma": 0.30917241110287713
+            }, 
+            {
+                "element": "H", 
+                "id": 2
+            }
+        ]
+    }, 
+    "24": {
+        "directed": true, 
+        "graph": {
+            "name": "O-H4"
+        }, 
+        "links": [
+            {
+                "source": 0, 
+                "target": 1
+            }, 
+            {
+                "source": 0, 
+                "target": 2
+            }, 
+            {
+                "source": 0, 
+                "target": 3
+            }, 
+            {
+                "source": 0, 
+                "target": 4
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "NAC": -0.48644, 
+                "NBO": 4.029014, 
+                "element": "O", 
+                "epsilon": 0.36830189573253774, 
+                "id": 0, 
+                "sigma": 0.30671581320931035
+            }, 
+            {
+                "element": "H", 
+                "id": 1
+            }, 
+            {
+                "element": "H", 
+                "id": 2
+            }, 
+            {
+                "element": "H", 
+                "id": 3
+            }, 
+            {
+                "element": "H", 
+                "id": 4
+            }
+        ]
+    }, 
+    "25": {
+        "directed": true, 
+        "graph": {
+            "name": "O-H1"
+        }, 
+        "links": [
+            {
+                "source": 1, 
+                "target": 0
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "H", 
+                "id": 0
+            }, 
+            {
+                "NAC": -0.8155140000000001, 
+                "NBO": 1.638406, 
+                "element": "O", 
+                "epsilon": 0.38661449677978277, 
+                "id": 1, 
+                "sigma": 0.32640315443236484
+            }
+        ]
+    }, 
+    "26": {
+        "directed": true, 
+        "graph": {
+            "name": "Ti-O7"
+        }, 
+        "links": [
+            {
+                "source": 7, 
+                "target": 0
+            }, 
+            {
+                "source": 7, 
+                "target": 1
+            }, 
+            {
+                "source": 7, 
+                "target": 2
+            }, 
+            {
+                "source": 7, 
+                "target": 3
+            }, 
+            {
+                "source": 7, 
+                "target": 4
+            }, 
+            {
+                "source": 7, 
+                "target": 5
+            }, 
+            {
+                "source": 7, 
+                "target": 6
+            }
+        ], 
+        "multigraph": false, 
+        "nodes": [
+            {
+                "element": "O", 
+                "id": 0
+            }, 
+            {
+                "element": "O", 
+                "id": 1
+            }, 
+            {
+                "element": "O", 
+                "id": 2
+            }, 
+            {
+                "element": "O", 
+                "id": 3
+            }, 
+            {
+                "element": "O", 
+                "id": 4
+            }, 
+            {
+                "element": "O", 
+                "id": 5
+            }, 
+            {
+                "element": "O", 
+                "id": 6
+            }, 
+            {
+                "NAC": 2.148138, 
+                "NBO": 2.25575, 
+                "element": "Ti", 
+                "epsilon": 2.638725902510107, 
+                "id": 7, 
+                "sigma": 0.25377408226586345
+            }
+        ]
+    }
+}

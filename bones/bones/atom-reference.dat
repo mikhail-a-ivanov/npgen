@@ -1,0 +1,8 @@
+# Free atom reference data for computing
+# force field parameters
+# Rfree in Angstrom, Vfree in Bohr^3, Bfree in Ha Bohr^6, p dimensionless
+#
+     Rfree   Vfree    Bfree     p
+Ti   2.319  136.98  1203.00  2.19
+O    1.661   23.49    16.70  2.26
+H    1.577    8.47     6.51  1.85

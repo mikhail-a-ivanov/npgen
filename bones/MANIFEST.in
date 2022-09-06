@@ -1,0 +1,8 @@
+include README.rst
+include bones/atomdata.dat
+include bones/atomtypes.json
+include bones/atomtypes.txt
+include bones/bondtypes.dat
+include bones/angletypes.dat
+include bones/atom-reference.dat
+include bones/FF-bones.itp

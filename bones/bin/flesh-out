@@ -1,0 +1,737 @@
+#!/usr/bin/env python
+# PYTHON_ARGCOMPLETE_OK
+
+"""
+Flesh out a molecular topology that is compatible with the BONES (BOnd
+NEtwork Similarity) force field given atomic coordinates.
+v. 0.4 from 2020-07-24
+
+Added support for charged molecules (v. 0.3 from 2019-05-03 updated by Sasha)
+
+Rewritten for python 3. Updated syntax according to the changes in imported libraries
+"""
+
+import sys
+import os
+import argcomplete
+import argparse
+import string
+import json
+import bones
+import itertools as it
+import mdtraj as md
+import networkx as nx
+import numpy as np
+import pandas as pd
+from bones.util import sort_pairs,sort_triplets,sort_quadruplets,numpy_replace
+from radish import Topologizer
+from pandas import Series,DataFrame
+from scipy.optimize import minimize
+from operator import itemgetter as ig
+from collections import Counter
+from mendeleev.fetch import fetch_table
+from tqdm import tqdm
+from IPython import embed
+
+class CustomFormatter(argparse.ArgumentDefaultsHelpFormatter,
+                      argparse.RawDescriptionHelpFormatter):
+    pass
+
+# Functions for charge neutralization
+def QF(x, *args):
+    return 0.5*np.power(x[0]-1, 2.0)
+def QG(x, eps=0.05, *args):
+    return eps - 0.5*np.power(x[1:]-1, 2.0)
+def QH(x, Q, QT, *args):
+    return np.sum(x*Q)-QT
+def QFp(x, *args):
+    return np.insert(np.zeros(len(x)-1), 0, x[0]-1)
+def QGp(x, *args):
+    return np.column_stack((np.zeros(len(x)-1),np.diag(-(x[1:]-1))))
+def QHp(x, Q, *args):
+    return Q
+
+"""
+# Replace with dict in numpy array
+def numpy_replace(arr, transdict):
+    sort_idx = np.argsort(transdict.keys())
+    idx = np.searchsorted(transdict.keys(), arr, sorter = sort_idx)
+    return np.asarray(transdict.values())[sort_idx][idx]
+
+# Pair sorting
+def sort_pairs(x):
+    arr = np.asarray(x)
+    return np.select([np.tile(arr[:,0] <  arr[:,1], (2,1)).T,
+                      np.tile(arr[:,0] >= arr[:,1], (2,1)).T],
+                     [arr,
+                      arr[:,::-1]])
+# Triplet sorting
+def sort_triplets(x):
+    arr = np.asarray(x)
+    return np.select([np.tile(arr[:,0] <  arr[:,2], (3,1)).T,
+                      np.tile(arr[:,0] >= arr[:,2], (3,1)).T],
+                     [arr,
+                      arr[:,::-1]])
+# Quartet sorting
+def sort_quadruplets(x):
+    arr = np.asarray(x)
+    return np.select([np.tile(arr[:,1] <  arr[:,2], (4,1)).T,
+                      np.tile(arr[:,1] == arr[:,2], (4,1)).T,
+                      np.tile(arr[:,1] >  arr[:,2], (4,1)).T],
+                     [arr,
+                      np.insert(np.sort(arr[:,[0,3]], axis=1),
+                                [1],
+                                arr[:,[1,2]], axis=1),
+                      arr[:,::-1]])
+"""
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+
+    argparser = argparse.ArgumentParser(description=__doc__,
+                                       formatter_class=CustomFormatter)
+    
+    # Options
+    argparser.add_argument("-c", "--coordinates", default="conf.pdb",
+                            help="Input: Atomic coordinates (PDB)")
+    argparser.add_argument("-of","--output-ff", default="dummy.ff",
+                            help="Output: Force field parameters (GROMACS .itp format)")
+    argparser.add_argument("-ot","--output-topology", default="topol.top",
+                            help="Output: Atomic topology (GROMACS .top format)")
+    argparser.add_argument("-oc","--output-coordinates", default="output.gro",
+                            help="Output: Atomic coordinates (GROMACS .gro format)")
+    argparser.add_argument("-od","--output-data", default="data.feather",
+                            help="Output: Detailed atomic data (feather format)")
+    argparser.add_argument("-or","--output-ranking", default="ranking.feather",
+                            help="Output: Atoms vs graphs rankings (feather format)")
+    argparser.add_argument("--ff-atomtypes", default=os.path.join(bones.__path__[0], "atomtypes.json"),
+                            help="Param: Force field atomtypes")
+    argparser.add_argument("--ff-bondtypes", default=os.path.join(bones.__path__[0],"bondtypes.dat"),
+                            help="Param: Force field bondtypes")
+    argparser.add_argument("--ff-angletypes", default=os.path.join(bones.__path__[0],"angletypes.dat"),
+                            help="Param: Force field angletypes")
+    argparser.add_argument("--ff-dihedraltypes", default=os.path.join(bones.__path__[0],"dihedraltypes.dat"),
+                            help="Param: Force field dihedraltypes")
+    argparser.add_argument("--ff-impropertypes", default=os.path.join(bones.__path__[0],"impropertypes.dat"),
+                            help="Param: Force field impropertypes")
+    argparser.add_argument("--bond-factor", type=float, default=0.25,
+                            help=("Param: Factor between covalent and vdw "
+                                  "radii (between 0 = covalent and 1 = vdw)"))
+    argparser.add_argument("--fname-suffix", default="",
+                            help="Param: String suffix for .itp file name")
+
+    # Parse arguments
+    argcomplete.autocomplete(argparser)
+    args = argparser.parse_args()
+
+    # Load atomic coordinates from first frame
+    fr = md.load_frame(args.coordinates, 0)
+    top,_ = fr.top.to_dataframe()
+    # Add atomic numbers
+    top = top.assign(atomic_number=[a.element.atomic_number for a in fr.top.atoms])
+
+    # Read force field data
+    ff = {}
+    ## Atomgraphs
+    print("Reading atomtypes from {}...\r".format(args.ff_atomtypes))
+    with open(args.ff_atomtypes) as fp:
+        ff["atomgraphs"] = json.load(fp)
+    ff["atomgraphs"] = list(ff["atomgraphs"].items())
+
+    ## Prepare dict with elements
+    for (i,(j,g)) in enumerate(ff["atomgraphs"]):
+        ff["atomgraphs"][i] = (int(j),bones.read_json(g))
+    ff["atomgraphs"] = dict(ff["atomgraphs"])
+   
+    # Store atomtypes as DataFrame
+    ff["atomtypes"] = DataFrame.from_dict({i:g.root
+                                           for (i,g) in ff["atomgraphs"].items()},
+                                          orient="index")
+    def categorize_elements(x):
+        cats = pd.Categorical(x.index)
+        cats = cats.rename_categories(list(string.ascii_uppercase[:x.index.nunique()]))
+        return x + Series(cats, index=x.index).astype("str")
+    ats = ff["atomtypes"]["element"].groupby(ff["atomtypes"]["element"])\
+                                    .apply(categorize_elements)
+    # Atomtypes
+    ff["atomtypes"] = ff["atomtypes"].assign(atomtype=ats, ptype="A")
+
+    # Get atomic data for elements in system
+    ptable = fetch_table("elements")
+    ptable = ptable[ptable["symbol"].isin(ff["atomtypes"]["element"].unique())]
+
+    # Grab dict for ranking
+    rank_dict = ptable.set_index("symbol")["covalent_radius_cordero"].to_dict()
+    
+    # Atomic number and mass
+    ff["atomtypes"] = ff["atomtypes"].assign(
+        atnum=ff["atomtypes"].element.map(ptable.set_index("symbol").atomic_number),
+        mass=ff["atomtypes"].element.map(ptable.set_index("symbol").atomic_weight),
+        desc=Series({i: g.label for (i,g) in ff["atomgraphs"].items()})
+    )
+  
+    indices = "i j k l".split()
+
+    # Read bonded force field data
+    for (n,(tp,f)) in enumerate(zip(["bondtypes", "angletypes", "dihedraltypes"],
+                                    [args.ff_bondtypes, args.ff_angletypes,
+                                     args.ff_dihedraltypes])):
+        print("Reading {} from {}...\r".format(tp,f))
+
+        try:
+            ff[tp] = pd.read_table(f, delim_whitespace=True, comment="#").rename_axis("index")
+            ff[tp] = ff[tp][[col for col in ff[tp].columns if "std" not in col]]
+            ff[tp] = ff[tp].rename(columns=lambda x: x.replace(":mean",""))
+
+        except IOError:
+            ff[tp] = DataFrame(columns=["desc","func"]+indices[:n+2]).rename_axis("index")
+            print("    Note: Found no {}.".format(tp))
+                   
+    print("")
+    
+    # Sort bond types
+    if not ff["bondtypes"].empty:
+        pairs_sorted = sort_pairs(ff["bondtypes"][indices[:2]])
+        pairs_sorted = DataFrame(pairs_sorted, columns=indices[:2],
+                                    index=ff["bondtypes"].index)
+        pairs_sorted = pairs_sorted.combine_first(ff["bondtypes"])[ff["bondtypes"].columns]\
+                                         .apply(pd.to_numeric, errors="ignore", downcast="integer")\
+                                         .sort_values(by=["i","j"])
+        pairs_sorted = pairs_sorted.rename(index=dict(zip(pairs_sorted.index.values,
+                                                                1+np.arange(len(pairs_sorted)))))
+        ff["bondtypes"] = pairs_sorted
+        
+    # Sort angle types
+    if not ff["angletypes"].empty:
+        triplets_sorted = sort_triplets(ff["angletypes"][indices[:3]])
+        triplets_sorted = DataFrame(triplets_sorted, columns=indices[:3],
+                                    index=ff["angletypes"].index)
+        triplets_sorted = triplets_sorted.combine_first(ff["angletypes"])[ff["angletypes"].columns]\
+                                         .apply(pd.to_numeric, errors="ignore", downcast="integer")\
+                                         .sort_values(by=["j","i","k"])
+        triplets_sorted = triplets_sorted.rename(index=dict(zip(triplets_sorted.index.values,
+                                                                1+np.arange(len(triplets_sorted)))))
+        ff["angletypes"] = triplets_sorted
+        
+    # Sort dihedral types
+    if not ff["dihedraltypes"].empty:
+        quadruplets_sorted = sort_quadruplets(ff["dihedraltypes"][indices[:4]])
+        quadruplets_sorted = DataFrame(quadruplets_sorted, columns=indices[:4],
+                                    index=ff["dihedraltypes"].index)
+        quadruplets_sorted = quadruplets_sorted.combine_first(ff["dihedraltypes"])
+        quadruplets_sorted = quadruplets_sorted[ff["dihedraltypes"].columns]\
+                             .apply(pd.to_numeric, errors="ignore", downcast="integer")\
+                             .sort_values(by=["j","k","i","l"])
+        quadruplets_sorted = quadruplets_sorted.rename(
+            index=dict(zip(quadruplets_sorted.index.values,
+                           1+np.arange(len(quadruplets_sorted)))))
+        ff["dihedraltypes"] = quadruplets_sorted
+    
+    if args.output_ff != "dummy.ff":
+        print("Writing GMX FF parameters to {}...".format(args.output_ff))
+        with open(args.output_ff, "w") as fp:
+            # Write sorted nonbonded types
+            desc = ff["atomtypes"]["desc"]
+            data = ff["atomtypes"][["atomtype","atnum","mass","NAC",
+                                    "ptype","sigma","epsilon"]]
+            data = data.assign(desc="; " + desc.str.ljust(desc.str.len().max()+1))
+            data = data.sort_values(by="atomtype").reset_index(drop=True)
+
+            fp.write("[ atomtypes ]\n;{}\n".format(data.to_string(index=False,
+                                                                col_space=10)))
+
+            # Write sorted bonded types
+            for (n,(tp,sort_order)) in enumerate(zip(["bondtypes", "angletypes",
+                                                    "dihedraltypes"],
+                                                    ["ij", "jik","jkil"])):
+                if ff[tp].isnull().values.all():
+                    continue
+                desc = ff[tp]["desc"]
+                data = ff[tp].assign(desc="; " + desc.str.ljust(desc.str.len().max()+1))
+                column_order = indices[:n+2] + ["func"] + \
+                            [c for c in data.columns
+                                if c not in indices[:n+2] + ["desc","func"]] + ["desc"]
+                data = data[column_order].sort_values(by=list(sort_order))
+                data = data.reset_index(drop=True)
+                
+                atypes = data[indices[:n+2]].apply(lambda x:
+                                                x.map(ff["atomtypes"]["atomtype"]))
+                data = atypes.combine_first(data)[column_order]\
+                            .assign(func=data["func"].astype(int))
+                fp.write("\n[ {} ]\n;{}\n".format(tp,data.to_string(index=False,
+                                                                    col_space=10,
+                                                                    na_rep="")))
+        print("")
+    
+    topo = Topologizer.from_coords(args.coordinates, bondfactor=args.bond_factor)
+    topo.topologize()
+
+    G = nx.from_pandas_edgelist(topo.bondgraph, "i", "j", edge_attr="dist")
+    G = nx.relabel_nodes(G, mapping=dict(zip(G.nodes(), map(int,G.nodes()))))
+    G.add_nodes_from(np.arange(topo.trj.n_atoms))
+    nx.set_node_attributes(G, name="pos", values=dict(enumerate(topo.trj.xyz[0])))
+    
+    elements_in_system = Series(rank_dict).sort_values().index
+    graphs = {i: g for (i,g) in ff["atomgraphs"].items()    
+              if g.root["element"] in elements_in_system}
+    # Make lists of neighbor elements for each atom with counted occurrences
+    lists_for_atoms = DataFrame.from_dict({k: v.keys() for (k,v) in G.adjacency()},
+                                          orient="index")
+    lists_for_atoms = lists_for_atoms.apply(lambda x: x.map(top["element"]))
+    lists_for_atoms = lists_for_atoms.stack(dropna=False)\
+                                     .groupby(level=0)\
+                                     .value_counts(dropna=False)
+    lists_for_atoms = lists_for_atoms.unstack()
+    lists_for_atoms = lists_for_atoms.reindex(columns=elements_in_system).fillna(0)
+     # Make lists of neighbor elements for each graph with counted occurrences
+    lists_for_graphs = Series({i: list(map(lambda x: g.nodes[x]["element"],
+                                           g.neighbors(g.root_node)))
+                               for (i,g) in graphs.items()}).apply(Series, convert_dtype=True)
+    lists_for_graphs = lists_for_graphs.stack(dropna=False)\
+                                       .groupby(level=0)\
+                                       .value_counts(dropna=False)
+    lists_for_graphs = lists_for_graphs.unstack()
+    lists_for_graphs = lists_for_graphs.reindex(columns=elements_in_system).fillna(0)
+    # Create a ranking matrix of neighbor lists for atoms and graphs based
+    # on Jaccard similarity
+    m_index = pd.MultiIndex.from_product([lists_for_atoms.index,
+                                          lists_for_graphs.index])
+    a,b = zip(*it.product(lists_for_atoms.values,lists_for_graphs.values))
+    a = np.vstack(a)
+    b = np.vstack(b)
+    
+    jacc = np.divide(np.minimum(a,b).sum(axis=1),
+                     np.maximum(a,b).sum(axis=1),
+                     out=np.ones_like(a.sum(axis=1)),
+                     where=np.maximum(a,b).sum(axis=1)>0)
+    
+    ranking = Series(jacc.copy(), index=m_index)
+    
+    # Disable element that mismatch
+    elements_and_graphs = ranking.rename_axis(["atom","graph"])\
+                                 .reset_index()[["atom","graph"]]
+    elements_and_graphs = elements_and_graphs.assign(
+        atom=lambda x: x["atom"].map(top["element"]),
+        graph=lambda x: x["graph"].map(Series({i: g.root["element"]
+                                               for (i,g) in graphs.items()}))
+    )
+    different_elements = (elements_and_graphs.atom.values !=
+                          elements_and_graphs.graph.values)
+    ranking[different_elements] = np.nan
+    # Set index names
+    ranking = ranking.rename_axis(["atom","graph"])
+    
+    #print("Writing rankings to {}...".format(args.output_ranking))
+    #ranking.dropna().to_frame("ranking").reset_index().to_feather(args.output_ranking)
+
+    # Ambiguous matches
+    unambiguous = ranking.dropna().groupby("atom").agg(
+        lambda x: ~x.sort_values(ascending=False).duplicated(keep=False).values[0]
+    ).astype(bool)
+
+    # Matching atomgraphs and their rankings
+    atomic_data = pd.concat([ranking.unstack().idxmax(axis=1),
+                             ranking.unstack().max(axis=1),
+                             ranking.unstack().max(axis=1)>0,
+                             unambiguous],
+                            keys=["graph","ranking","match","unambiguous"],
+                            axis=1)
+    # Atomic env label for atoms
+    atomic_envs = lists_for_atoms.astype(int).astype(str).values
+    atomic_envs = np.tile(lists_for_atoms.columns, (len(lists_for_atoms),1)) + atomic_envs
+    atomic_envs[lists_for_atoms==0] = ""
+    atomic_envs = top.element.values + "-" + atomic_envs.sum(axis=1)
+
+    # Atomtypes, resnr, cgnr, element, and charge
+    atomic_data = atomic_data.assign(
+        atype=atomic_data.graph.map(ff["atomtypes"].atomtype),
+        element=atomic_data.graph.map(ff["atomtypes"].element),
+        NAC=atomic_data.graph.map(ff["atomtypes"].NAC),
+        env=atomic_envs
+    )
+    
+    # Remove bonds that are not represented in the force field
+    btypes_in_ff = [tuple(t) for t in ff["bondtypes"][["i","j"]].values]
+    ag = atomic_data.graph.to_dict()
+
+    for e in G.copy().edges():
+        if tuple(sorted((ag[e[0]],ag[e[1]]))) not in btypes_in_ff:
+            G.remove_edge(*e)
+    
+    n_molecules = nx.number_connected_components(G) + len(list(nx.isolates(G)))
+    print("Found {} molecules...".format(n_molecules))
+
+    # Loop over molecules    
+    molecules = []
+    
+    for (molnr,mol) in tqdm(enumerate(list((G.subgraph(c) for c in nx.connected_components(G))) +
+                                      list([nx.Graph({gr: {}}) for gr in nx.isolates(G)])),
+                    desc="Preparing molecules", total=n_molecules):
+        """
+    for (molnr,mol) in tqdm(enumerate(list(nx.connected_component_subgraphs(G)) +
+                                      list([nx.Graph({gr: {}}) for gr in nx.isolates(G)])),
+                    desc="Preparing molecules", total=n_molecules):
+    
+        """
+        # Nonbonded data for atoms
+        df = atomic_data.loc[list(mol.nodes())]
+        
+        # Calculate charge groups
+        Qn = df.groupby('atype').NAC.agg(["sum",len])\
+               .rename(columns={"sum": "charge", "len": "N"})
+        totCharge = sum(Qn.charge.values)
+        totIntCharge = round(totCharge,0)
+        print((Qn.charge.values))
+        print(("Charge: " + str(totCharge) + " rounded to " + str(totIntCharge)))
+
+        
+        # Define constraints
+        constraints=[{"type": "ineq", "fun": QG, "jac": QGp},
+                     {"type": "eq",   "fun": QH, "jac": QHp,
+                      "args": (Qn.charge.values,totIntCharge,)}]
+        # Find best charges by solving minimization problem
+        
+        results = minimize(QF, np.ones(len(Qn)), jac=QFp, constraints=constraints)
+        Qn = Qn.assign(scale_factor=Series(results.x, index=Qn.index))
+        # Store scale factor  !!!  Should be to nearest integer  
+        df = df.assign(scale_factor=df.atype.map(Qn.scale_factor))
+        # Rescale charges to neutralize
+        
+        df = df.assign(NAC=df.scale_factor*df.NAC)
+               
+        # Atom masses
+        df = df.assign(mass=df.graph.map(ff["atomtypes"].mass))
+        # Atom positions
+        df = pd.concat([df, DataFrame(nx.get_node_attributes(mol, "pos"),
+                                      index=["x","y","z"]).T], axis=1)
+
+        # Sort atoms in molecule based on Pagerank 
+        df = df.assign(pagerank=Series(nx.pagerank(mol)))
+        df = df.sort_values(by="pagerank", ascending=False)
+
+        # Atom names, numbers (global and local) and molecule number
+        df = df.assign(
+            atname=df.element + (df.groupby("element").cumcount() + 1).astype(str),
+            at_index=np.arange(len(df)),
+            molnr=molnr+1
+        ).rename_axis("atom").reset_index()
+        
+        # Setup molecule
+        molecule = bones.Molecule()
+        # Store atom information
+        molecule.atoms = df.copy()
+
+        # Bonds 
+        indices = ["i", "j"]
+
+        edges = sort_pairs(numpy_replace(
+            np.array(list(mol.edges.keys())).reshape(-1,2),
+            molecule.atoms.set_index("atom").at_index.to_dict()
+        ))
+            
+        edges_atomtypes = numpy_replace(
+            edges, molecule.atoms.set_index("at_index").graph.to_dict()
+        )
+
+        # Extract bonds between atoms i and j with corresponding atomtypes 
+        df = DataFrame(np.column_stack((edges,edges_atomtypes)),
+                       columns=indices+["a" + i for i in indices])
+        # Add bond data from force field
+        m_idx = pd.MultiIndex.from_arrays(sort_pairs(edges_atomtypes).T)
+        df = pd.concat([df, ff["bondtypes"].set_index(indices)\
+                                           .reindex(m_idx)\
+                                           .reset_index(drop=True)], axis=1)
+
+        # Store bond information
+        molecule.bonds = df.dropna(subset=["func"])\
+                           .sort_values(by=["i","j"])\
+                           .reset_index(drop=True)
+
+        # Get 1-3 and 1-4 paths
+        paths = nx.all_pairs_shortest_path(mol, 3)
+        paths = pd.concat({k: Series(v) for (k,v) in paths})
+
+        # Angles
+        indices = ["i","j","k"]
+
+        triplets = sort_triplets(numpy_replace(
+            np.array(paths[paths.agg(len)==3].tolist()).reshape(-1,3),
+            molecule.atoms.set_index("atom").at_index.to_dict()
+        ))
+        
+        try:
+            triplets = np.vstack({tuple(row) for row in triplets}) #  Drop dupes
+        except ValueError:
+            pass
+
+        triplets_atomtypes = numpy_replace(
+            triplets, molecule.atoms.set_index("at_index").graph.to_dict()
+        )
+
+        # Extract angles between atoms i, j, and k with corresponding atomtypes
+        df = DataFrame(np.column_stack((triplets,triplets_atomtypes)),
+                       columns=indices+["a" + i for i in indices])
+        # Add angle data from force field
+        m_idx = pd.MultiIndex.from_arrays(sort_triplets(triplets_atomtypes).T)
+        df = pd.concat([df, ff["angletypes"].set_index(indices)\
+                                            .reindex(m_idx)\
+                                            .reset_index(drop=True)], axis=1)
+
+        # Store angle information
+        molecule.angles = df.dropna(subset=["func"])\
+                            .sort_values(by=["j","i","k"])\
+                            .reset_index(drop=True)
+        
+        # Dihedrals
+        indices = ["i","j","k","l"]
+
+        quarts = sort_quadruplets(numpy_replace(
+            np.array(paths[paths.agg(len)==4].tolist()).reshape(-1,4),
+            molecule.atoms.set_index("atom").at_index.to_dict()
+        ))
+                
+        try:
+            quarts = np.vstack({tuple(row) for row in quarts}) #  Drop dupes
+        except ValueError:
+            pass
+
+        quarts_atomtypes = numpy_replace(
+            quarts, molecule.atoms.set_index("at_index").graph.to_dict()
+        )
+
+        # Extract dihedrals between i, j, k, and l with corresponding atomtypes 
+        df = DataFrame(np.column_stack((quarts,quarts_atomtypes)),
+                       columns=indices+["a" + i for i in indices])
+        # Add dihedral data from force field
+        m_idx = pd.MultiIndex.from_arrays(sort_quadruplets(quarts_atomtypes).T)
+        df = pd.concat([df, ff["dihedraltypes"].set_index(indices)\
+                                               .reindex(m_idx)\
+                                               .reset_index(drop=True)], axis=1)
+            
+        # Store dihedral information
+        molecule.dihedrals = df.dropna(subset=["func"])\
+                               .sort_values(by=["j","k","i","l"])\
+                               .reset_index(drop=True)
+
+        # Store molecule
+        molecules.append(molecule)
+
+    # Sort molecules on number of atoms   
+    molecules = [m for m in sorted(molecules,
+                                   key=lambda x: len(x.atoms),
+                                   reverse=True)]
+
+    print("Sorting moleculetypes...\r")
+    mc = Counter(molecules).most_common()
+    mc = sorted(mc, key=lambda x: len(x[0].atoms), reverse=True)
+    print("Sorting moleculetypes... done.")
+    
+    # WRITE ALL OUTPUT
+    
+    # Write .top file
+    print("Writing topology to {}...".format(args.output_topology))
+    fp_top = open(args.output_topology,"w")
+
+    fp_top.write("[ defaults ]\n")
+    fp_top.write("; {}        {}       {}       {} {}\n".format(
+        "nbfunc", "comb-rule", "gen-pairs", "fudgeLJ", "fudgeQQ"
+    ))
+    fp_top.write(("{}               {}       "
+                  "        {}             {}     {}\n").format(
+        "1", "2", "yes", "0.5", "0.8333"
+    ))
+    
+    fp_top.write("\n; FF\n")
+    fp_top.write("#include \"{}\"\n".format("FF_bones.itp"))
+    fp_top.write("\n; molecules\n")
+    # Molecular labels
+    lbls = Series([m.label for m in molecules]) 
+    lbls = lbls.str.cat((lbls.groupby(lbls).cumcount() + 1).astype(str), sep="_")
+
+    for (m,c) in mc:
+        l = lbls[molecules.index(m)]
+        oitp = "{}{}.itp".format(l, args.fname_suffix)
+        with open(oitp,"w") as fp_itp:
+            print("    Molecule {} -> {}".format(l,oitp))
+            # Write molecule type
+            fp_itp.write("[ moleculetype ]\n")
+            fp_itp.write("; {:18s} {}\n".format("molname","nrexcl"))
+            if m.bonds.empty:
+                nrexcl = 0
+            else:
+                nrexcl = 1
+
+            fp_itp.write("{:20s} {}\n".format(l, nrexcl))
+            
+            # Write atoms
+            fp_itp.write("\n[ atoms ]\n")
+            
+            ## Create descriptions
+            x = m.atoms.graph\
+                 .dropna()\
+                 .map(ff["atomtypes"]["desc"])\
+                 .fillna("unknown")\
+                 .tolist()
+            y = list(map("{:.6g}".format, m.atoms["NAC"].cumsum()))
+            desc = ["; {{:{:d}s}}{{:{:d}s}}[{{}}]".format(
+                max(map(len,x)),1+max(map(len,y))-len(Q)
+            ).format(d," ",Q) for (d,Q) in zip(x,y)]
+
+            # Round charges to five decimals while preserving their sum (as zero)
+            # with cascade rounding
+            x = m.atoms.NAC.values.cumsum().round(5)
+            
+            fp_itp.write("; {}\n".format(
+                m.atoms.assign(
+                    NAC=np.concatenate((x[:1],x[1:]-x[:-1])),
+                    resnr=1,
+                    nr=1+np.arange(len(m.atoms)),
+                    cgnr=1+np.arange(len(m.atoms)),
+                    resname=m.label[:4],
+                    desc=desc
+                ).to_string(columns=["nr","atype","resnr","resname",
+                                     "atname","cgnr","NAC","mass","desc"],
+                            index=False, col_space=8, justify="left")
+            ))
+
+            # Write bonds
+            if not m.bonds.empty:
+                indices = ["i","j"]
+                
+                fp_itp.write("\n[ bonds ]\n")
+                fp_itp.write("; {}\n".format(
+                    pd.concat([m.bonds[indices]+1,
+                               m.bonds[m.bonds.columns.difference(indices)]],
+                              axis=1)\
+                      .assign(
+                          desc="; " + m.bonds["desc"].str\
+                                       .ljust(m.bonds["desc"].str.len().max()+1),
+                          func=m.bonds["func"].astype(int)
+                    ).to_string(columns=indices+["func","desc"],
+                                index=False, col_space=8, justify="left")
+                ))
+
+            # Write angles
+            if not m.angles.empty:
+                indices = ["i","j","k"]
+
+                fp_itp.write("\n[ angles ]\n")
+                fp_itp.write("; {}\n".format(
+                    pd.concat([m.angles[indices]+1,
+                               m.angles[m.angles.columns.difference(indices)]],
+                              axis=1)\
+                      .assign(
+                          desc="; " + m.angles["desc"].str\
+                                       .ljust(m.angles["desc"].str.len().max()+1),
+                          func=m.angles["func"].astype(int)
+                      ).to_string(columns=indices+["func","desc"],
+                                  index=False, col_space=8, justify="left")
+                ))
+
+            # Write dihedrals
+            if not m.dihedrals.empty:
+                indices = ["i","j","k","l"]
+
+                fp_itp.write("\n[ dihedrals ]\n")
+                fp_itp.write("; {}\n".format(
+                    pd.concat([m.dihedrals[indices]+1,
+                               m.dihedrals[m.dihedrals.columns.difference(indices)]],
+                              axis=1)\
+                      .assign(
+                          desc="; " + m.dihedrals["desc"].str\
+                                       .ljust(m.dihedrals["desc"].str.len().max()+1),
+                          func=m.dihedrals["func"].astype(int)
+                      ).to_string(columns=indices+["func","desc"],
+                                  index=False, col_space=8, justify="left")
+                ))
+
+            # Write exclusions
+            if nrexcl > 0:
+                indices="i j k l".split()
+                # DataFrame with bonds between atoms with angle and dihedral potentials
+                edges = np.vstack([m.angles.filter(indices)[["i","j"]].values,
+                                   m.angles.filter(indices)[["j","k"]].values,
+                                   m.dihedrals.filter(indices)[["i","j"]].values,
+                                   m.dihedrals.filter(indices)[["j","k"]].values,
+                                   m.dihedrals.filter(indices)[["k","l"]].values])
+                edges = DataFrame(sort_pairs(edges)+1, columns=["i","j"])
+                edges = edges.drop_duplicates().sort_values(by=["i","j"]).reset_index(drop=True)
+
+                # Create network from DataFrame
+                H = nx.from_pandas_edgelist(edges, "i", "j")
+                
+                # Grab all 1-3 and 1-4 paths
+                paths = dict(nx.all_pairs_shortest_path(H, 3))
+
+                if len(paths.keys())>0:
+                    paths = pd.concat({k: Series(v) for (k,v) in paths.items()})
+                    exclusions = paths[paths.agg(len)>2].apply(it.combinations, r=2).apply(list).values
+                    exclusions = DataFrame(list(it.chain.from_iterable(exclusions)), columns=["i","j"])
+                    exclusions = exclusions.groupby("i").j.apply(set).apply(sorted)
+
+                    fp_itp.write("\n[ exclusions ]\n")                
+                    for (i,r) in exclusions.iteritems():
+                        fp_itp.write("{} {}\n".format(i," ".join(list(map(str,r)))))
+                
+        fp_top.write("#include \"{}\"\n".format(oitp))
+        
+    fp_top.write("\n[ system ]\n")
+    fp_top.write("fleshed out from {}\n".format(args.coordinates))
+
+    fp_top.write("\n[ molecules ]\n")
+    fp_top.write("; {:18s} {}\n".format("molname", "#"))
+
+    for (m,c) in mc:
+        l = lbls[molecules.index(m)]
+        fp_top.write("{:20s} {}\n".format(l,c))
+
+    fp_top.close()
+
+    print("Wrote topology to {}...".format(args.output_topology))
+
+    # Write gro
+    coords = pd.concat([m.atoms.assign(resname=m.label, resnr=i+1)
+                        for (i,m) in enumerate(molecules)],
+                       ignore_index=True)
+    coords = coords.assign(atnr=(1+np.arange(len(coords))%100000),
+                           resnr=coords["resnr"]%100000,
+                           resname=coords["resname"].str.slice(stop=4),
+                           atname=coords["atname"].str.slice(stop=4),
+                           kind=coords.graph.map(Series({i: g.label
+                                                         for (i,g) in graphs.items()})))
+
+    #print("Writing atomic data to {}...".format(args.output_data))
+    #coords.to_feather(args.output_data)
+    
+    fmt = "{:5d}{:5s}{:>5s}{:5d}{:8.3f}{:8.3f}{:8.3f}\n"
+    gro_cols = ["resnr","resname","atname","atnr","x","y","z"]
+    
+    print("Writing coordinates to {}...".format(args.output_coordinates))
+    with open(args.output_coordinates,"w") as fp_gro:
+        fp_gro.write("Generated by flesh-out from {}\n".format(args.coordinates))
+        fp_gro.write("{:d}\n".format(len(coords)))
+        for t in coords.assign(atname=coords.atype)[gro_cols]\
+                       .itertuples(index=False,name=None):
+            fp_gro.write(fmt.format(*t))
+
+        fp_gro.write(("{:10.5f}"*fr.unitcell_lengths.size).format(
+            *np.round(fr.unitcell_lengths.reshape(-1).astype(float),5)
+        ))
+        fp_gro.write("\n")
+
+    if totIntCharge != 0:     
+        print("")
+        print(("Total charge is:" + str(totIntCharge)))
+        print("Insert necessary amount of ions manually!")
+    
+    print("")
+    print("""\"An adrenal mental man-tool box explodes in music creates utopia \n
+You gnarl out on my nerves you weird and crush the cranking raunch \n
+Flesh dirt force field lost and found let's burn your broken heart\" \n
+
+-- Sonic Youth
+""")
+
+if __name__ == "__main__":
+    sys.exit(main())

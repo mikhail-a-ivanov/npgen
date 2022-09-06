@@ -1,0 +1,41 @@
+;    BONES TiO2 force field. Version 2019-07-30  with parameters for bound adsorbed water
+;
+[ atomtypes ]
+;atomtype      atnum       mass        NAC      ptype      sigma    epsilon        desc
+       HA          1      1.008   0.417000          A   0.000000   0.000000  ; H-O1    
+       OA          8     15.999  -1.124000          A   0.351000   0.409000  ; O-Ti3   
+       OB          8     15.999  -1.035000          A   0.342000   0.401000  ; O-Ti2 !  bridge oxygen  
+       OC          8     15.999  -0.834000          A   0.315060   0.636400  ; O-H2  !  TiP3P water
+       OF          8     15.999  -0.913000          A   0.329000   0.389     ; O-H1Ti1  ! oxygen-hydroxyl
+       OG          8     15.999  -1.035000          A   0.342000   0.401000  ; O-H1Ti2  ! protonated oxygen bridge
+       OH          8     15.999  -0.923             A   0.31506    0.6364    ; O-H2Ti1  ! adsorbed water
+      TiA         22     47.867   2.248000          A   0.199000  13.790000  ; Ti-O6   !  bulk Ti
+      TiB         22     47.867   2.159000          A   0.190000  13.790000  ; Ti-O5   !  surface Ti
+
+[ bondtypes ]
+;i          j       func         b0             kb       desc
+      TiA         OA          1   0.19      800000.          ; Ti-O 
+      TiA         OB          1   0.19      800000.          ; Ti-O 
+      TiA         OC          1   0.2       800000.          ; Ti-O 
+      TiA         OF          1   0.19      800000.          ; Ti-O
+      TiA         OH          1   0.18      40000.           ; Ti-O
+      TiB         OA          1   0.19      800000.          ; Ti-O
+      TiB         OB          1   0.19      800000.          ; Ti-O
+      TiB         OC          1   0.2       800000.          ; Ti-O
+      TiB         OF          1   0.19      800000.          ; Ti-O
+      TiB         OH          1   0.18      40000.           ; Ti-O
+       OC         HA          1   0.1       347900.          ; O-H  
+       OF         HA          1   0.1       326700.          ; O-H
+       OH         HA          1   0.1       326700.          ; O-H
+
+[ angletypes ]
+;i          j          k       func       theta0        ktheta        desc
+      OF          TiA        OH          1   90.         500.      ;  (H)O-To-O(H2)
+      OH          TiA        OH          1   90.         500.      ;  (H2)O-To-O(H2)
+      TiA         OG         HA          1  112.6        564.      ;  protonated bridge
+      TiA         OF         HA          1  114.85       543.      ; Ti-O-H 
+      TiB         OF         HA          1  114.85       543.      ; Ti-O-H
+      TiA         OH         HA          1  114.85       500.      ; Ti-O-H 
+      TiB         OH         HA          1  114.85       500.      ; Ti-O-H
+      HA          OC         HA          1  104.2        628.      ;  H-O-H 
+      HA          OH         HA          1  104.2        628.      ;  H-O-H 

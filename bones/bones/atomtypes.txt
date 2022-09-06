@@ -1,0 +1,9 @@
+number type
+1      Ti6
+2      Ti5
+4      OA        O-bulk
+5      OB        0-bridge
+6      OC        water-O (not used)
+7      H         hydrogen
+14     O         O-hydroxyl
+16     O         O-bound water

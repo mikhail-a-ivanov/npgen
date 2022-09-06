@@ -1,0 +1,512 @@
+#!/usr/bin/env python
+
+# PYTHON_ARGCOMPLETE_OK
+
+"""Generate BONES (BOnd NEtwork Similarity) force field based on partitioned ab
+initio-determined electron densities. Input files can be read with the usual
+wildcards and are sorted in natural order.
+
+"""
+import os
+import sys
+import argcomplete
+import argparse
+import re
+import json
+import bones
+import itertools as it
+import numpy as np
+import pandas as pd
+import mdtraj as md
+import networkx as nx
+from radish import Topologizer
+from pandas import Series,DataFrame
+from mendeleev.fetch import fetch_table
+from natsort import natsorted
+from tqdm import tqdm
+from IPython import embed
+
+# Conversion factors between units
+angstrom_to_nm = 0.1
+bohr_to_nm = 0.052917725
+hartree_to_kJpermol = 2625.499
+
+conversion_factors = {"Vaim":  bohr_to_nm**3,
+                      "Bfree": hartree_to_kJpermol*(bohr_to_nm**6),
+                      "Rfree": angstrom_to_nm,
+                      "Vfree": bohr_to_nm**3}
+
+# Global constants
+force_constant_factor_bond = 922.695
+force_constant_factor_angle = 66412
+
+class CustomFormatter(argparse.ArgumentDefaultsHelpFormatter,
+                      argparse.RawDescriptionHelpFormatter):
+    pass
+
+def numpy_replace(arr, transdict):
+    """ Replace with dict in numpy array."""
+    sort_idx = np.argsort(transdict.keys())
+    idx = np.searchsorted(transdict.keys(), arr, sorter = sort_idx)
+    return np.asarray(transdict.values())[sort_idx][idx]
+
+def read_jmol(fname, P="P"):
+    """Read data from jmol file. Label read property with 'P'."""
+    if not fname:
+        return None, None
+    with open(fname) as fp:
+        # Get number of atoms
+        natoms = int(fp.readline())
+        # Read data line
+        data = fp.readline()
+        # Read coordinates and property
+        df = pd.read_table(fp, delim_whitespace=True, header=None, nrows=natoms,
+                           names="element x y z {}".format(P).split())
+        # Setup dataframe for topology
+        atoms = df.assign(x=df["x"]/10, y=df["y"]/10, z=df["z"]/10)
+        atoms = atoms.assign(serial=df.index+1, name=df.element.str.upper(),
+                          resSeq=1, resName="UNK", chainID=1)
+        # Get box lengths and box angles
+        vec_converter = md.utils.box_vectors_to_lengths_and_angles
+        uc_match = re.match(".*unitcell.*\[(.*)\]" , data).group(1)
+        box = np.array([l.translate(None, "{}").split()
+                        for l in uc_match.split(",")]).astype(float)
+        a,b,c,alpha,beta,gamma = vec_converter(*box)
+        # Create MDTraj object
+        trj = md.Trajectory(df["x y z".split()].values/10.0,
+                            md.Topology.from_dataframe(atoms),
+                            unitcell_lengths=np.array([a,b,c])/10.0, 
+                            unitcell_angles=[alpha,beta,gamma])
+        return atoms, trj
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+
+    argparser = argparse.ArgumentParser(description=__doc__,
+                                       formatter_class=CustomFormatter)
+    
+    # Options
+    ## Input:
+    argparser.add_argument("-q", "--net-atomic-charges", nargs="+",
+                           metavar="<NACs.xyz>",
+                           default=["DDEC6_even_tempered_net_atomic_charges.xyz"],
+                           help="Input: Net atomic charges (e)")
+    argparser.add_argument("-v", "--volumes", nargs="+",
+                           metavar="<Rcubed.xyz>",
+                           default=["DDEC_atomic_Rcubed_moments.xyz"],
+                           help="Input: Atomic volumes (Bohr^3)")
+    argparser.add_argument("-b", "--bond-orders", nargs="+", 
+                           metavar="<BOs.xyz>", 
+                           default=["DDEC6_even_tempered_bond_orders.xyz"],
+                           help="Input: Bond orders")
+    argparser.add_argument("-r", "--reference", default=None,
+                           metavar="<reference-data.dat>",
+                           help="Input: Free-atom reference data")
+    ## Output:
+    argparser.add_argument("-od", "--data", default="data.dat",
+                           metavar="<data.dat>",
+                           help="Output: Data grouped by graph type")
+    argparser.add_argument("-oa", "--atomtypes", default="atomtypes.json",
+                           metavar="<atomtypes.json>",
+                           help="Output: Generated BONES atomtypes in JSON format")
+    argparser.add_argument("-ob", "--bondtypes", default="bondtypes.dat",
+                           metavar="<bondtypes.json>",
+                           help="Output: Generated BONES bondtype table")
+    argparser.add_argument("-on", "--angletypes", default="angletypes.dat",
+                           metavar="<angletypes.json>",
+                           help="Output: Generated BONES angletype table")
+    argparser.add_argument("-oh", "--dihedraltypes", default="dihedraltypes.dat",
+                           metavar="<dihedraltypes.json>",
+                           help="Output: Generated BONES dihedraltype table")
+    ## Parameters:
+    argparser.add_argument("--bond-factor", type=float, default=0.25,
+                           help=("Param: Factor between covalent and vdw radii "
+                                 "(between 0 = covalent and 1 = vdw)"))
+    argparser.add_argument("--ignore-bonds", action="store_true",
+                            help="Param: Do not generate bonds")
+    argparser.add_argument("--ignore-angles", action="store_true",
+                            help="Param: Do not generate angles")
+    argparser.add_argument("--ignore-dihedrals", action="store_true",
+                            help="Param: Do not generate dihedrals")
+    argparser.add_argument("--ignore-impropers", action="store_true",
+                            help="Param: Do not generate improper dihedrals")
+
+    # Parse arguments
+    argcomplete.autocomplete(argparser)
+    args = argparser.parse_args()
+        
+    # Read free-atom reference data
+    if args.reference:
+        ref_data_file = args.reference
+    else:
+        ref_data_file = os.path.join(os.path.dirname(bones.__file__),
+                                     "atom-reference.dat")
+    ref_data = pd.read_table(ref_data_file, delim_whitespace=True, comment="#")
+
+    # Get covalent and van der Waals radii for elements
+    ptable = fetch_table("elements")
+    rcov = ptable[["atomic_number", "covalent_radius_cordero"]]
+    rcov = rcov.set_index("atomic_number").squeeze()/1000
+    rvdw = ptable[["atomic_number", "vdw_radius_alvarez"]]
+    rvdw = rvdw.set_index("atomic_number").squeeze()/1000
+
+    # Prepare bond orders
+    min_number_of_files = min(len(args.net_atomic_charges),
+                              len(args.volumes),
+                              len(args.bond_orders))
+
+    # Initialize graphs, data, bonds, angles, dihedrals and impropers
+    graphs = {}
+    data = {}
+    bonds = []
+    angles = []
+    dihedrals = []
+    # Initialize counters
+    counter = 0
+    graphtype = 0
+
+    # Generate BONES force field
+    for (iteration,(q,V,b)) in enumerate(zip(natsorted(args.net_atomic_charges),
+                                             natsorted(args.volumes),
+                                             natsorted(args.bond_orders))):
+        print("Processing files: ({}/{})".format(iteration+1, min_number_of_files))
+        msg = "  {:5s}: {}"
+        print(msg.format("NACs", q))
+        print(msg.format("Vaims", V))
+        print(msg.format("NBOs", b))
+                        
+        df_q, fr = read_jmol(q, "NAC")
+        df_V, _  = read_jmol(V, "Vaim")
+        df_b, _  = read_jmol(b, "NBO")
+        
+        # Check that NACs, volumes and bond orders are mutually consistent
+        if ((not df_q.drop("NAC", axis=1).equals(df_V.drop("Vaim", axis=1))) or 
+            (not df_q.drop("NAC", axis=1).equals(df_b.drop("NBO", axis=1)))):
+            print(("Warning: Skipping {}, {}, and {} because "
+                   "they are not mutually consistent.".format(q,V,b)))
+            continue
+
+        # Merge topologies for NACs, volumes and BOs.
+        top = df_q.merge(df_V)
+        top = top.merge(df_b)        
+
+        # Store NACs in dict
+        qs = top["NAC"].to_dict()
+        
+        # Keep track of atomtypes 
+        atomtypes = {}
+        
+        # Topologize coordinates
+        topo = Topologizer.from_mdtraj(fr)
+        topo.topologize()
+
+        # Create graph
+        G = nx.from_pandas_edgelist(topo.bondgraph, "i", "j", edge_attr="dist")
+        G = nx.relabel_nodes(G, mapping=dict(zip(G.nodes(), map(int,G.nodes()))))
+        G.add_nodes_from(np.arange(topo.trj.n_atoms))
+
+        # Loop over atoms
+        for n in tqdm(G.nodes(), desc="Identifying atomgraphs"):
+            # Atom type as directed graph
+            g = bones.Atomgraph(atom_dict={m: fr.top.atom(m).element.symbol
+                                           for m in [n]+G.neighbors(n)},
+                                bond_list=list(it.product([n],G.neighbors(n))))
+
+            # Add first graph
+            if not graphs:
+                counter = counter + 1
+                graphs[counter] = g
+
+            # Check if atomgraph has already been identified
+            already_identified = False
+            for (i,ag) in graphs.items():
+                if g.equals(ag):
+                    already_identified = True
+                    graphtype = i
+                    break
+            if not already_identified:
+                counter = counter + 1
+                graphs[counter] = g
+                graphtype = counter
+
+            atomtypes[n] = graphtype
+
+            # Store atomic data corresponding to graph
+            data.setdefault(graphtype, {})\
+                .setdefault("NAC", [])\
+                .append(top.loc[n,"NAC"])
+            data.setdefault(graphtype, {})\
+                .setdefault("Vaim", [])\
+                .append(top.loc[n,"Vaim"])
+            data.setdefault(graphtype, {})\
+                .setdefault("NBO", [])\
+                .append(top.loc[n,"NBO"])
+            
+        # All 1-2, 1-3 and 1-4 paths
+        indices = "ijkl"
+        paths = nx.all_pairs_shortest_path(G, 3)
+        paths = pd.concat({k: Series(v) for (k,v) in paths.items()})
+
+        # Bonds = 1-2 paths, angles = 1-3 paths, dihedrals = 1-4 paths
+        bondlist = DataFrame(paths[paths.agg(len) == 2].tolist())\
+                   .rename(columns=dict(enumerate(indices)))
+        anglelist = DataFrame(paths[paths.agg(len) == 3].tolist())\
+                    .rename(columns=dict(enumerate(indices)))
+        dihlist = DataFrame(paths[paths.agg(len) == 4].tolist())\
+                  .rename(columns=dict(enumerate(indices)))
+   
+        # Calculate bonds
+        b0 = md.compute_distances(fr, bondlist.values.reshape(-1,2)).reshape(-1)
+        kb = bondlist.replace(qs).prod(axis=1).abs().values/(b0**3)
+        kb = force_constant_factor_bond*kb
+        
+        bondlist = DataFrame(numpy_replace(bondlist,atomtypes),
+                             index=bondlist.index,
+                             columns=bondlist.columns).assign(func=1, b0=b0, kb=kb)
+
+        # Calculate angles
+        theta0 = md.compute_angles(fr, anglelist.values.reshape(-1,3)).reshape(-1)
+        rij = md.compute_distances(
+            fr, anglelist.filter(["i","j"]).values.reshape(-1,2)
+        ).reshape(-1)
+        rjk = md.compute_distances(
+            fr, anglelist.filter(["j","k"]).values.reshape(-1,2)
+        ).reshape(-1)
+        rik = md.compute_distances(
+            fr, anglelist.filter(["i","k"]).values.reshape(-1,2)
+        ).reshape(-1)
+        qik = anglelist.filter(["i","k"]).replace(qs).prod(axis=1).abs()
+        ktheta = (qik.values/rik**5)*(rij*(rik**3))
+        ktheta = ktheta*(rij*rjk*(1-np.cos(theta0)**2) - (rik**2)*np.cos(theta0))
+        ktheta = force_constant_factor_angle*ktheta
+        anglelist = DataFrame(numpy_replace(anglelist,atomtypes),
+                              index=anglelist.index,
+                              columns=anglelist.columns).assign(
+                                  func=1,
+                                  theta0=theta0,
+                                  ktheta=ktheta)
+        
+        # Calculate dihedrals            
+        phi0 = md.compute_dihedrals(fr, dihlist.values.reshape(-1,4)).reshape(-1)
+        dihlist = DataFrame(numpy_replace(dihlist,atomtypes),
+                              index=dihlist.index,
+                              columns=dihlist.columns).assign(
+                                  func=1,
+                                  phi0=phi0,
+                                  kphi=4.184,
+                                  mult=1
+                              )
+
+        # User can choose to ignore bonded interactions
+        if args.ignore_bonds:
+            bondlist = DataFrame()
+        if args.ignore_angles:
+            anglelist = DataFrame()
+        if args.ignore_dihedrals:
+            dihlist = DataFrame()
+
+        # Store calculated bonded interactions
+        bonds.append(bondlist)
+        angles.append(anglelist)
+        dihedrals.append(dihlist)
+
+    # Quit gracefully if no data was gathered
+    if not data:
+        raise RuntimeError(("No data was gathered. Check your input and other "
+                            "error messages from the program."))
+    
+    # Transform data to DataFrame
+    df_dict = {} 
+    for k in data:
+        df = DataFrame(data[k])
+        df_dict[k] = df
+    data = pd.concat(df_dict, names=["graph"]).reset_index(level=1, drop=True)
+
+    # Include element information in data
+    element_dict = {i: g.root["element"] for (i,g) in graphs.items()}
+    data = data.assign(element=Series(data.index).replace(element_dict).values)
+
+    # Include free-atom reference data
+    ref_dict = {k: [v] for (k,v) in ref_data.to_dict(orient="index").items()}
+    ref = data["element"].replace(ref_dict).apply(Series)
+    data = pd.concat([data, ref], axis=1)
+
+    # Convert to proper units
+    data = data.apply(lambda x: x*conversion_factors[x.name]
+                      if x.name in conversion_factors else x)
+    
+    #  Calculate force field parameters
+    Raim = ((data["Vaim"]/data["Vfree"])**(1.0/3.0))*data["Rfree"]
+    B = ((data["Vaim"]/data["Vfree"])**data["p"])*data["Bfree"]
+    A = 0.5*B*((2*Raim)**6.0)        
+    sigma = (A/B)**(1.0/6.0)
+    epsilon = (B**2)/(4*A)
+    data = data.assign(Raim=Raim, B=B, A=A, sigma=sigma, epsilon=epsilon)
+
+    # Mean values categorized by graphs
+    mean_values = data.groupby(level="graph").mean()
+    for (i,g) in graphs.items():
+        g.root["NAC"] = mean_values.loc[i, "NAC"]
+        g.root["NBO"] = mean_values.loc[i, "NBO"]
+        g.root["epsilon"] = mean_values.loc[i, "epsilon"]
+        g.root["sigma"] = mean_values.loc[i, "sigma"]
+
+    # Bonds
+    print("Processing bonds...")
+
+    indices = ["i","j"]
+    bonds = pd.concat(bonds, ignore_index=True)
+    for (k,v) in dict.fromkeys(indices, np.int).items():
+        bonds[k] = bonds[k].astype(v)
+
+    # Sort bonds
+    x = bonds[indices].values
+
+    bonds = pd.concat([DataFrame(np.sort(x, axis=1), columns=indices),
+                       bonds[bonds.columns.difference(indices)]], axis=1)
+
+    # Average and standard deviation (replace zero std with nan), and reindex
+    bonds = bonds.groupby(indices+["func"]).agg(["mean","std"]).reset_index()
+    bonds = bonds.replace(
+        dict.fromkeys(set(it.product(bonds.columns.get_level_values(0),
+                                     ["std"])), {0: np.nan})
+    )
+    bonds = bonds.sort_values(by=["i","j"]).reset_index(drop=True)
+    bonds = bonds.rename(index={i: i+1 for i in np.arange(len(bonds))})
+    # Add bond descriptions
+    desc = ["{}-{}".format(graphs[i].root["element"],
+                           graphs[j].root["element"])
+            for (i,j) in bonds[indices].itertuples(index=False,name=None)]
+    bonds = bonds.assign(desc=desc)
+
+    # Angles
+    print("Processing angles...")
+    indices = ["i","j","k"]
+    angles = pd.concat(angles, ignore_index=True)
+    for (k,v) in dict.fromkeys(indices, np.int).items():
+        angles[k] = angles[k].astype(v)
+
+    # Sort angles
+    x = angles[indices].values
+
+    angles = pd.concat([DataFrame(np.where(np.tile(x[:,0]<x[:,2], (3,1)).T,
+                                           x,
+                                           x[:,::-1]),
+                                  columns=indices),
+                        angles[angles.columns.difference(indices)]],
+                       axis=1)
+    # Average and standard deviation, and reindex
+    angles = angles.groupby(indices+["func"]).agg(["mean","std"]).reset_index()
+    angles = angles.replace(
+        dict.fromkeys(set(it.product(angles.columns.get_level_values(0),
+                                     ["std"])), {0: np.nan})
+    )
+    angles = angles.sort_values(by=["j","i","k"]).reset_index(drop=True)
+    angles = angles.rename(index={i: i+1 for i in np.arange(len(angles))})
+    # Add angle descriptions
+    desc = ["{}-{}-{}".format(graphs[i].root["element"],
+                              graphs[j].root["element"],
+                              graphs[k].root["element"])
+            for (i,j,k) in angles[indices].itertuples(index=False,name=None)]
+    angles = angles.assign(theta0=np.degrees(angles["theta0"]), desc=desc)
+
+    # Dihedrals
+    print("Processing dihedrals...")
+    indices = ["i","j","k","l"]
+
+    dihedrals = pd.concat(dihedrals, ignore_index=True)
+    for (k,v) in dict.fromkeys(indices, np.int).items():
+        dihedrals[k] = dihedrals[k].astype(v)
+
+    # Sort dihedrals
+    x = dihedrals[indices].values
+
+    condlist = [np.tile(x[:,1] <  x[:,2], (4,1)).T,
+                np.tile(x[:,1] == x[:,2], (4,1)).T,
+                np.tile(x[:,1] >  x[:,2], (4,1)).T]
+    choicelist = [x,
+                  np.insert(np.sort(x[:,[0,3]], axis=1), [1], x[:,[1,2]], axis=1),
+                  x[:,::-1]]
+
+    dihedrals = pd.concat([DataFrame(np.select(condlist,choicelist),
+                                     columns=indices),
+                           dihedrals[dihedrals.columns.difference(indices)]],
+                          axis=1)
+    # Average and standard deviation, and reindex
+    dihedrals = dihedrals.groupby(indices+["func"]).agg(["mean","std"]).reset_index()
+    dihedrals = dihedrals.replace(
+        dict.fromkeys(set(it.product(dihedrals.columns.get_level_values(0),
+                                     ["std"])), {0: np.nan})
+    )
+    dihedrals = dihedrals.sort_values(by=["j","k","i","l"]).reset_index(drop=True)
+    dihedrals = dihedrals.rename(index={i: i+1 for i in np.arange(len(dihedrals))})
+
+    # Add dihedral descriptions
+    desc = ["{}-{}-{}-{}".format(graphs[i].root["element"],
+                                 graphs[j].root["element"],
+                                 graphs[k].root["element"],
+                                 graphs[l].root["element"])
+            for (i,j,k,l) in dihedrals[indices].itertuples(index=False,name=None)]
+    dihedrals = dihedrals.assign(phi0=np.degrees(dihedrals["phi0"]), desc=desc)
+    
+    # Write output graphs in JSON format
+    json_graphs = {}
+    for (i,g) in graphs.items():
+        json_graphs[i] = g.to_json()
+
+    with open(args.atomtypes, "w") as fp:
+        json.dump(json_graphs, fp, sort_keys=True, indent=4)
+    print("Wrote atomtypes to {}.".format(args.atomtypes))
+    
+    # Write output data
+    with open(args.data,"w") as fp:
+        df = data.set_index("element", append=True)
+        fp.write(df.reset_index().to_string(index=False) + "\n")
+    print("Wrote detailed parameters to {}.".format(args.data))
+
+    # Write bonded data tables. The parameters are stored as plain text.
+    indices = "i j k l".split()
+   
+    # Write bonds
+    bonds.columns = [":".join(col).strip(":") for col in bonds.columns.values]
+
+    cols_desc = indices[:2] + ["desc","func"]
+    cols = cols_desc + bonds.columns.difference(cols_desc).tolist()
+    bonds = bonds[cols]
+
+    with open(args.bondtypes, "w") as fp:
+        fp.write(bonds.to_string() + "\n")
+    print("Wrote bondtypes to {}.".format(args.bondtypes))
+
+    # Write angles
+    angles.columns = [":".join(col).strip(":") for col in angles.columns.values]
+
+    cols_desc = indices[:3] + ["desc","func"]
+    cols = cols_desc + angles.columns.difference(cols_desc).tolist()
+    angles = angles[cols]
+    
+    with open(args.angletypes, "w") as fp:
+        fp.write(angles.to_string() + "\n")
+    print("Wrote angletypes to {}.".format(args.angletypes))
+    
+    # Write dihedrals
+    dihedrals.columns = [":".join(col).strip(":") for col in dihedrals.columns.values]
+
+    cols_desc = indices[:4] + ["desc","func"]
+    cols = cols_desc + dihedrals.columns.difference(cols_desc).tolist()
+    dihedrals = dihedrals[cols]
+    
+    with open(args.dihedraltypes, "w") as fp:
+        fp.write(dihedrals.to_string() + "\n")
+    print("Wrote dihedraltypes to {}.".format(args.dihedraltypes))
+    
+    print("")
+    print("""\"No forcefield acts on bones inside / You said in a soft coda, \n)
+I'm not yet done\"
+
+-- North Atlantic Oscillation
+""")
+    
+if __name__ == "__main__":
+    sys.exit(main())
