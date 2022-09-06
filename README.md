@@ -53,3 +53,6 @@ Use in combination with the `FF-bones.itp` file to start MD simulations in `GROM
 - Samuel Stenberg - main developer of `mizzle` package
 - Mikhail Ivanov - development support
 - Alexander Lyubartsev - group leader and development support
+
+# Support
+Contact Mikhail Ivanov (mikhail.ivanov@mmk.su.se) in case of a problem with the code or installation process.
