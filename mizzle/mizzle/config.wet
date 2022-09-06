@@ -1,11 +1,11 @@
 #Example config file
 # Usage
 atom Ti: surface
-    water: 0.7
+    water: 0.
     hydroxyl: 0.3
 
 atom Ti: defect
-    water: 0.5
+    water: 0.
     hydroxyl: 0.5
 
 OHresname: OH
