@@ -1,5 +1,10 @@
 \#*
 *~
+# Output files
+*.pdb
+*.top
+*.gro
+*.itp
 
 # Compiled python modules.
 *.pyc
@@ -11,6 +16,7 @@ __pycache__/
 
 # C extensions
 *.so
+*.c
 
 # Distribution / packaging
 .Python
