@@ -48,7 +48,7 @@ Resulting output files include a `gro` configuration file, `itp` topology file a
 
 Use in combination with the `FF-bones.itp` file to start MD simulations in `GROMACS`.
 
-Authors:
+# Authors:
 - Erik G. Brandt - main developer of `bones`, `radish` and the structure generating scripts
 - Samuel Stenberg - main developer of `mizzle` package
 - Mikhail Ivanov - development support
