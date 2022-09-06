@@ -1,0 +1,15 @@
+Ti:
+    Nmax: 6
+    d_MOH: 2
+    d_MOH2: 2.1
+    <MOH: 115
+Fe:
+    Nmax: 6
+    d_MOH: 2
+    d_MOH2: 2.1
+    <MOH: 115
+Si:
+    Nmax: 4
+    d_MOH: 2
+    d_MOH2: 2
+    <MOH: 115

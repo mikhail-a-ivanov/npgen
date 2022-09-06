@@ -1,0 +1,167 @@
+#!/usr/bin/env python
+# PYTHON_ARGCOMPLETE_OK
+
+from __future__ import print_function    # (at top of module)
+
+from radish import Topologizer
+import sys
+import argcomplete
+import argparse
+import numpy as np
+import os
+
+# mizzle imports
+from mizzle.WetParser import parse_config, parse_data
+from mizzle.pdbExplorer import remove_low_coordinated,append_atoms
+from mizzle.Wetter import Wetter
+import mizzle.WetParser as wp
+
+class CustomFormatter(argparse.ArgumentDefaultsHelpFormatter,
+                      argparse.RawDescriptionHelpFormatter):
+    pass
+
+def main(argv=None):
+
+    if argv is None:
+        argv = sys.argv
+
+    argparser = argparse.ArgumentParser(description=__doc__,
+                                       formatter_class=CustomFormatter)
+    
+    # Options
+    argparser.add_argument("coords", metavar="file.pdb", default="input.pdb",
+                           help="Input: Structure file in pdb format")
+    argparser.add_argument("-c", "--conf",
+                           default=os.path.join(\
+                           os.path.dirname(wp.__file__), "config.wet"),
+                           help="Input: Config file")
+    argparser.add_argument("-o", "--out", default=None,
+                           help="Output: Hydrated structure,\
+                                 default: filename_wet.pdb")
+    argparser.add_argument("-s", "--silent", action="store_true",
+                           help="Param: Silence is golden")
+    argparser.add_argument("-log", "--log", action="store_true",
+                           help="Write log file for optimization")
+    argparser.add_argument('-check', default='all', nargs='?',
+                    choices=['none', 'metal', 'all'],
+                    help='')
+    argparser.add_argument('-solver', default='L-BFGS-B', nargs='?',
+                    choices=['L-BFGS-B', 'SLSQP'],
+                    help='Minimization method')
+    argparser.add_argument('-maxiter', default='500',
+                    help='Maximum steps when minimizing potential')
+    argparser.add_argument('-print_dist', '--print_distances', action='store_true',
+                    help='Outputs minimum and maximum distances of\
+                          resulting structure')
+    # Parse arguments
+    argcomplete.autocomplete(argparser)
+    args = argparser.parse_args()
+    
+    ## PREPARE INPUT ##
+    path = os.path.split(args.coords)[0]
+    if(args.out):
+        fileWet = args.out
+    else:
+        root,ext = os.path.splitext(args.coords)
+        fileWet = "{}{}{}".format(root, "_wet", ext)
+
+    # Call WetParser to parse config file
+    atoms, OHresname, OH2resname = parse_config(args.conf)
+
+    if (not OHresname):
+        OHresname = "SOL"
+    if (not OH2resname):
+        OH2resname = "SOL"
+    # Get element from config.wet
+    element = atoms[0].get("element", None)
+    waterFrac = None
+    hydroxylFrac = None
+    fraction = None
+
+    print("\n")
+    print("       __I__")
+    print("   .-'\"  .  \"'-.")
+    print(" .'  / . ' . \  '.")
+    print("/_.-..-..-..-..-._\\ .-----------------------------------------.")
+    print("         #  _,,_   ( Looks like there's mizzle on the horizon. )")
+    print("         #/`    `\ /'-----------------------------------------'")
+    print("         / / 6 6\\ \\")
+    print("         \\/\\  Y /\\/")
+    print("         #/ `'U` \\    MM   MM  II  ZZZZ  ZZZZ  LL     EEEE  RRRRR")
+    print("       , (  \\   | \\   M M M M  II    ZZ    ZZ  LL     EE    RR  RR")
+    print("       |\\|\\_/#  \\_/   M  M  M  II   ZZ    ZZ   LL     EEEE  RRRRR")
+    print("       \\/'.  \\  /'\\   M     M  II  ZZ    ZZ    LL     EE    RR RR")
+    print("        \\    /=\\  /   M     M  II  ZZZZ  ZZZZ  LLLLL  EEEE  RR  RR")
+    print("        /____)/____)")
+    print("\n")
+
+
+    print("______________________________________________________________________")
+    print("Running Mizzler with Config:")
+    print("----------------------------------------------------------------------")
+    print("Atom     Type    OH-frac     OH2-frac    "+\
+          "Nmax   d_MOH   d_MOH2    <MOH")
+
+    #Get data from config.wet
+    for atom in atoms:
+        element = atom.get("element")
+        metalData = parse_data(element)
+        Nmax = metalData['Nmax']
+        d_MOH = metalData['d_MOH']
+        d_MOH2 = metalData['d_MOH2']
+        angle = metalData['<MOH']
+        coordination = atom.get("coordination", None)
+        if coordination == "surface":
+            hydroxylFrac = float(atom.get("hydroxyl", None))
+            waterFrac = float(atom.get("water", None))
+            print(" " + atom.get('element') + "\t" + \
+                  str(atom.get('coordination')) + "\t   " +\
+                  str(hydroxylFrac) + "\t       " + str(waterFrac) +\
+                  "\t   " + str(Nmax)+ "\t " + str(d_MOH) +\
+                  "      " + str(d_MOH2) + "\t "+str(angle))
+        elif coordination == "defect":
+            dHydroxylFrac = float(atom.get('hydroxyl', None))
+            dWaterFrac = float(atom.get('water', None))
+            print(" " + atom.get('element') + "\t" + \
+                  str(atom.get('coordination')) + "\t   " + \
+                  str(dHydroxylFrac) + "\t       " + str(dWaterFrac) + \
+                  "\t   " + str(Nmax)+ "\t " + str(d_MOH) +\
+                  "      " + str(d_MOH2) + "\t "+str(angle))
+        else:
+            raise ValueError("Unknown keyword {}".format(coordination))
+
+    print("Solvate residues will be named: OH -> " + OHresname + ", OH2 -> " +\
+           OH2resname)
+    print("________________________________________________________________"+\
+          "______")
+    ### RUN ALGORITHM ###
+
+    # Create Wetter object
+    wet = Wetter(args.coords, silent = args.silent, optLog = args.log,\
+                 solver = args.solver.upper(), maxiter = int(args.maxiter))
+    wet.remove_low_coordinated(Nmax, element, check=args.check)
+
+    # Specify which types of atoms that should be hydrated
+    wet.get_coordinates({"Nmax": Nmax, "element": element,\
+                 "coordination": Nmax - 1,
+                 "OH": hydroxylFrac, "OH2": waterFrac,\
+                 "dMOH": d_MOH, "dMOH2":d_MOH2, "<MOH":angle})
+
+    wet.get_coordinates({"Nmax": Nmax, "element": element,\
+                 "coordination": Nmax - 2,
+                 "OH": dHydroxylFrac, "OH2": dWaterFrac,\
+                 "dMOH": d_MOH, "dMOH2":d_MOH2, "<MOH":angle})
+
+    # Run minimization
+    wet.optimize()
+
+    #Create atoms and append to file
+    wet.wet(print_dist = args.print_distances)
+    wet.save(fileWet, OHresname, OH2resname)
+
+    print("")
+    print("\"But we both know what memories can bring, they bring"+\
+          " diamonds and rust\" \n -- Judas Priest")
+
+if __name__ == "__main__":
+    sys.exit(main())

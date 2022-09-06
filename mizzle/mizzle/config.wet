@@ -1,0 +1,20 @@
+#Example config file
+# Usage
+atom Ti: surface
+    water: 0.7
+    hydroxyl: 0.3
+
+atom Ti: defect
+    water: 0.5
+    hydroxyl: 0.5
+
+OHresname: OH
+OH2resname: OH2
+
+end
+
+#Not currently possible to simultaneously choose multiple different metals. Will add this.
+#resname is the residue name for the solvate added to the pdb file (optional)
+
+# surface are Nmax - 1 coordinated atoms
+# defect are Nmax - 2 coordinated atoms

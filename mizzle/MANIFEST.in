@@ -1,0 +1,4 @@
+include README.md
+include mizzle.png
+include mizzle/metals.data
+include mizzle/config.wet
