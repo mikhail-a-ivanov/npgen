@@ -24,7 +24,7 @@ Install the packages for generating nanomaterials:
 
 Now everything is set up! Generate slabs, nanoparticles, hydrate their surfaces and create the `itp` files
 
-## Example for a small (3x3x3 nm) anatase (101) slab
+# Example for a small (3x3x3 nm) anatase (101) slab
 
 Generate the slab:
 
@@ -48,7 +48,7 @@ Resulting output files include a `gro` configuration file, `itp` topology file a
 
 Use in combination with the `FF-bones.itp` file to start MD simulations in `GROMACS`.
 
-# Authors:
+# Authors
 - Erik G. Brandt - main developer of `bones`, `radish` and the structure generating scripts
 - Samuel Stenberg - main developer of `mizzle` package
 - Mikhail Ivanov - development support
